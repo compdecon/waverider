@@ -1,7 +1,35 @@
+/*
+CDL Tide Sensor
+This script runs on an Adafruit Feather Huzzah ESP32 V2 and periodically records a series of distance
+ measurements from a Maxbotix ultrasonic sensor and reads a BME280 T, P, humidity sensor.  It sends
+ the data through a serial connection to a Heltec meshtastic device which in turn broadcasts the data
+ as a text message.  The feather switches to a deep sleep mode after broadcasting the data in order
+ to save energy.
+
+Much of this code came from Tidesensor5.ino - see the comments there for the evolution of the tide sensor
+hardware and script
+
+The BME280 TPH sensor is connected to the feather through QWIC I2C connectors.  The Maxbotix and Heltec radio board
+are also powered through the I2C connector and this power is turned off before the Feather goes to sleep.
+Time delays are built in to ensure the messages get out before sleeping.  
+
+The software also will send the data through a USB serial port to a computer to troubleshoot. 
+
+Distance readings are sampled READINGS times at MEASUREDELAY intervals.  They are averaged and the standard deviation calculated.  
+SLEEPTIME (in seconds) defines how long the feather sleeps before restarting this program from the beginning.
+
+The raw data is also sent as text - a problem getting this data received has been fixed by accumulating all
+of the info and sending it at once.  Previous versions sent the data out at 1 second intervals, allowing other 
+meshtastic devices (like IXR) to stomp on the messages.
+
+*/
+
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include <Adafruit_NeoPixel.h>
+
+
 
 #define NEOPIXEL_I2C_POWER 2
 #define uS_TO_S 1000000ULL /* Conversion factor for microseconds to seconds */
@@ -70,36 +98,22 @@ void loop() {
   // Send this info to computer serial monitor if it is in test mode
 
   Serial.print("Temp: ");
-  Serial.print(temp);
+  Serial.print(temp, 0);
   Serial.println(" °C");
 
   Serial.print("Pressure: ");
-  Serial.print(press);
+  Serial.print(press, 0);
   Serial.println(" hPa");
 
   Serial.print("Humidity: ");
-  Serial.print(hum);
+  Serial.print(hum, 0);
   Serial.println(" %");
 
   Serial.println("------------------");
 
 
-  // Send this info to Heltec for Meshtastic text broadcast
-  Serial1.println("Shark River Sensor 2");
-  Serial1.print("Temp: ");
-  Serial1.print(temp);
-  Serial1.println(" °C; ");
-
-  Serial1.print("Pressure: ");
-  Serial1.print(press);
-  Serial1.println(" hPa; ");
-
-  Serial1.print("Humidity: ");
-  Serial1.print(hum);
-  Serial1.println(" %; ");
-  
   //Now gather and send Maxbotix sensor data
-  Serial1.print("Distances (cm):  ");
+  Serial.print("Distances (cm):  ");
 
   distanceavg=0.0;
   for(i=0;i<READINGS;i++)
@@ -110,14 +124,14 @@ void loop() {
 
       waitAsecond(MEASUREDELAY);
 
-      Serial1.print(i);
-      Serial1.print(" ");
-      Serial1.print(round(distance[i]));
-      Serial1.print(", ");
+      Serial.print(i);
+      Serial.print(" ");
+      Serial.print(round(distance[i]));
+      Serial.print(", ");
    }
   distanceavg=distanceavg/READINGS;
 
-  Serial1.println(" ");
+  Serial.println(" ");
 
   distancesd=0.0;
   for(i=0;i<READINGS;i++)
@@ -126,19 +140,46 @@ void loop() {
    }
   distancesd=sqrt(distancesd/READINGS);
 
-  Serial1.print("Average: ");
-  Serial1.print(round(distanceavg));
-  Serial1.print(" cm, SD: ");
-  Serial1.print(round(distancesd));
-  Serial1.println(" cm");
-  
-  Serial.print("Average: ");
-  Serial.print(round(distanceavg));
+  Serial.print("Average Distance: ");
+  Serial.print(round(distanceavg), 0);
   Serial.print(" cm, SD: ");
-  Serial.print(round(distancesd));
+  Serial.print(round(distancesd), 0);
   Serial.println(" cm");
-  
-  waitAsecond(10); // Wait for Heltec to communicate data
+
+  // Send this info to Heltec for Meshtastic text broadcast
+  Serial1.println("Shark River Sensor 2");
+  Serial1.print("T: ");
+  Serial1.print(temp, 1);
+  Serial1.println(" °C");
+
+  Serial1.print("Press.: ");
+  Serial1.print(press, 0);
+  Serial1.println(" hPa");
+
+  Serial1.print("Hum.: ");
+  Serial1.print(hum, 0);
+  Serial1.println(" %");
+
+  Serial1.print("Average Distance: ");
+  Serial1.print(round(distanceavg), 0);
+  Serial1.print(" cm, SD: ");
+  Serial1.print(round(distancesd), 0);
+  Serial1.println(" cm; ");
+
+  for(i=0;i<READINGS;i++) // send raw data
+   {
+
+      Serial1.print(i);
+      Serial1.print(" ");
+      Serial1.print(round(distance[i]), 0);
+      if(i!=READINGS-1)
+       {
+          Serial1.print(", ");
+       }
+   }
+  Serial1.println(" ");
+
+  waitAsecond(15); // Wait for Heltec to communicate data
 
   powerdown();  // turn off to save power until next reading
 }
